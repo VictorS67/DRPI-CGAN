@@ -5,7 +5,7 @@ import PIL.Image as Image
 import numpy as np
 
 
-def visualize_flow_heatmap(flow, output_path, max_flow_mag=20.0):
+def visualize_flow_heatmap(flow, output_path, max_flow_mag=7.0):
     min_flow_mag = 0.5
     flow_magn = np.sqrt(flow[:, :, 0]**2 + flow[:, :, 1]**2)
     cv_magn = np.clip(
@@ -25,7 +25,7 @@ def visualize_flow_heatmap(flow, output_path, max_flow_mag=20.0):
     out.save(output_path, quality=95)
 
 
-def visualize_merge_heatmap(img, flow, output_path, max_flow_mag=20.0):
+def visualize_merge_heatmap(img, flow, output_path, max_flow_mag=7.0):
     min_flow_mag = 0.5
     flow_magn = np.sqrt(flow[:, :, 0]**2 + flow[:, :, 1]**2)
     cv_magn = np.clip(

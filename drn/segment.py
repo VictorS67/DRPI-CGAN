@@ -1,7 +1,8 @@
 import math
 import torch
 import torch.nn as nn
-from networks.drn import drn_c_26
+
+from drn.drn import drn_c_26
 
 
 def fill_up_weights(up):

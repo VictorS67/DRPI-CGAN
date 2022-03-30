@@ -7,12 +7,17 @@ import torch.nn as nn
 from PIL import Image
 
 from pwc.pwc import pwc_net
+from tools.resize import resize_shorter_side, resize_img, crop_img
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
-def load(img_path):
-    img_numpy = np.array(Image.open(img_path))[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) * (1.0 / 255.0)
+def load(img_path, no_crop, box, w, h):
+    img = Image.open(img_path)
+    if not no_crop:
+        img, box = crop_img(img, box)
+    img = resize_img(img, w, h)[0]
+    img_numpy = np.array(img)[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) * (1.0 / 255.0)
     return torch.FloatTensor(np.ascontiguousarray(img_numpy)).to(device)
 
 
@@ -24,8 +29,8 @@ def preprocess(img_tensor):
     return h, w, preprocess_h, preprocess_w, nn.functional.interpolate(preprocess_img, size=(preprocess_h, preprocess_w), mode='bilinear', align_corners=False)
 
 
-def estimate(img1, img2):
-    img1_tensor, img2_tensor = load(img1), load(img2)
+def estimate(img1, img2, no_crop, box, w, h):
+    img1_tensor, img2_tensor = load(img1, no_crop, box, w, h), load(img2, no_crop, box, w, h)
 
     assert(img1_tensor.shape[1] == img2_tensor.shape[1])
     assert(img1_tensor.shape[2] == img2_tensor.shape[2])

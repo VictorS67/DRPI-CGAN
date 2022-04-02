@@ -31,7 +31,7 @@ if __name__ == "__main__":
     # DRN testing
     predicted_flow = predict_flow(args.modify, args.no_crop, model_path=args.model).cpu().numpy()
     predicted_flow = np.transpose(predicted_flow, (1, 2, 0))
-    h, w, _ = predicted_flow.shape
+    h, w, d = predicted_flow.shape
 
     if args.no_crop:
         img = Image.open(args.modify).convert('RGB')
@@ -45,10 +45,11 @@ if __name__ == "__main__":
     # PWC testing
     flow = estimate(args.modify, args.origin, args.no_crop, box, w, h).cpu().numpy()
     flow = np.transpose(flow, (1, 2, 0))
-    fh, fw, _ = flow.shape
+    fh, fw, fd = flow.shape
 
     assert(h == fh)
     assert(w == fw)
+    print(f"flow: h = {fh}, w = {fw}, d = {d}, fd = {fd}")
 
     visualize_flow_heatmap(flow, os.path.join(args.output_dir, 'pwc_flow_heatmap.jpg'), 7.0)
     visualize_merge_heatmap(modified_np, flow, os.path.join(args.output_dir, 'pwc_merge_heatmap.jpg'), 7.0)

@@ -15,7 +15,7 @@ def load(img_path, no_crop):
         img = Image.open(img_path).convert('RGB')
     else:
         img, box = detect_face(img_path)
-    return resize_shorter_side(img, 400)[0]
+    return resize_shorter_side(img, 400)[0], box
 
 
 def preprocess(img):
@@ -30,7 +30,7 @@ def preprocess(img):
 
 
 def predict_flow(img, no_crop, model_path=None):
-    img = load(img, no_crop)
+    img, box = load(img, no_crop)
     img = preprocess(img)
 
     model = DRNSeg(2)

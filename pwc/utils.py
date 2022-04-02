@@ -3,6 +3,7 @@ import numpy as np
 import PIL
 import torch
 import torch.nn as nn
+import torchvision.transforms as transforms
 
 from PIL import Image
 
@@ -17,11 +18,18 @@ def load(img_path, no_crop, box, w, h):
     if not no_crop:
         img, box = crop_img(img, box)
     img = resize_img(img, w, h)[0]
-    img_numpy = np.array(img)[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) * (1.0 / 255.0)
-    return torch.FloatTensor(np.ascontiguousarray(img_numpy)).to(device)
+
+    return img
 
 
-def preprocess(img_tensor):
+def preprocess(img):
+    tf = transforms.Compose([
+        transforms.Lambda(lambda x: np.array(x)[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) * (1.0 / 255.0)),
+        transforms.Lambda(lambda x: torch.FloatTensor(np.ascontiguousarray(x)))
+    ])
+    # img_numpy = np.array(img)[:, :, ::-1].transpose(2, 0, 1).astype(np.float32) * (1.0 / 255.0)
+    # img_tensor = torch.FloatTensor(np.ascontiguousarray(img_numpy)).to(device)
+    img_tensor = tf(img).to(device)
     _, h, w = img_tensor.shape
     preprocess_img = img_tensor.view(1, 3, h, w)
     preprocess_w, preprocess_h = int(math.floor(math.ceil(w / 64.0) * 64.0)), int(math.floor(math.ceil(h / 64.0) * 64.0))
@@ -30,13 +38,10 @@ def preprocess(img_tensor):
 
 
 def estimate(img1, img2, no_crop, box, w, h):
-    img1_tensor, img2_tensor = load(img1, no_crop, box, w, h), load(img2, no_crop, box, w, h)
+    img1, img2 = load(img1, no_crop, box, w, h), load(img2, no_crop, box, w, h)
 
-    assert(img1_tensor.shape[1] == img2_tensor.shape[1])
-    assert(img1_tensor.shape[2] == img2_tensor.shape[2])
-
-    h, w, preprocess_h, preprocess_w, img1_tensor = preprocess(img1_tensor)
-    _, _, _, _, img2_tensor = preprocess(img2_tensor)
+    h, w, preprocess_h, preprocess_w, img1_tensor = preprocess(img1)
+    _, _, _, _, img2_tensor = preprocess(img2)
 
     model = pwc_net('default').to(device)
     model.eval()

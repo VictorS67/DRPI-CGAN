@@ -1,4 +1,5 @@
 import torch
+import numpy
 from PIL import Image
 from typing import Tuple
 
@@ -13,6 +14,7 @@ class ImageData:
 
     name: str
     img: Image
+    flow: numpy.ndarray
     data: torch.Tensor
     box: Tuple
     input_sizes: Tuple

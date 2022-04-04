@@ -13,8 +13,6 @@ import pwc.utils as pwc_utils
 from pwc.pwc import pwc_net
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-
-
 class DatasetConfig:
 
     basepath: str
@@ -29,29 +27,30 @@ class DatasetOutput:
 
 class Dataset(torch.utils.data.Dataset):
 
-    class DRNLoader:
-
-        def __init__(self) -> None:
-            self.imgs = {}
-
-        def load(self, img_path, no_crop, box=None) -> Tuple[Image, Tuple]:
-            return drn_utils.load(img_path, no_crop)
-
-        def preprocess(self, img) -> torch.Tensor:
-            return drn_utils.preprocess(img)
-
-    class PWCLoader:
-
-        def __init__(self) -> None:
-            self.imgs = {}
-
-        def load(self, img_path, no_crop, box, w, h) -> Image:
-            return pwc_utils.load(img_path, no_crop, box, w, h)
-
-        def preprocess(self, img) -> Tuple[int, int, int, int, torch.Tensor]:
-            return pwc_utils.preprocess(img)
-
     def __init__(self, config: DatasetConfig) -> None:
+
+        class DRNLoader:
+
+            def __init__(self) -> None:
+                self.imgs = {}
+
+            def load(self, img_path, no_crop, box=None) -> Tuple[Image.Image, Tuple]:
+                return drn_utils.load(img_path, no_crop)
+
+            def preprocess(self, img) -> torch.Tensor:
+                return drn_utils.preprocess(img)
+
+        class PWCLoader:
+
+            def __init__(self) -> None:
+                self.imgs = {}
+
+            def load(self, img_path, no_crop, box, w, h) -> Image.Image:
+                return pwc_utils.load(img_path, no_crop, box, w, h)
+
+            def preprocess(self, img) -> Tuple[int, int, int, int, torch.Tensor]:
+                return pwc_utils.preprocess(img)
+
         self.basepath = Path(config.basepath)
         self.no_crop = config.no_crop
         self.DRNLoader = DRNLoader()
@@ -64,12 +63,14 @@ class Dataset(torch.utils.data.Dataset):
                 images = sorted(f.iterdir())
                 for image_path in images:
                     img_data = ImageData()
-                    img_data.name = f / image_path
+                    # print(f"f: {f}")
+                    # print(f"image_path: {image_path}")
+                    img_data.name = str(image_path)
                     if f.stem == ImageType.MODIFIED:
                         img_data.img, img_data.box = self.DRNLoader.load(image_path, self.no_crop)
-                        img_data.data = self.DRNLoader.preprocess(img_data.img)
-                        _, _, h, w = img_data.data.shape
-                        img_data.input_sizes = tuple(h, w)
+                        img_data.data = self.DRNLoader.preprocess(img_data.img)[0]
+                        _, h, w = img_data.data.shape
+                        img_data.input_sizes = tuple((h, w))
                         img_data.preprocess_sizes = None
                         img_data.flow = None
                         self.DRNLoader.imgs[image_path] = img_data
@@ -106,37 +107,36 @@ class Dataset(torch.utils.data.Dataset):
 
     def __len__(self) -> int:
         return len(self.imgs)
-    
-    def update_original(self, flows: np.ndarray, modified_name: List[str], original_name: List[str]) -> np.ndarray:
-        n, mh, mw, _ = flows.shape
-        gt_flow = []
-        model = pwc_net('default').to(device)
-        model.eval()
-        for i in range(n):
-            flow = flows[i]
-            modified_path = modified_name[i]
-            original_path = original_name[i]
 
-            image_data = self.DRNLoader.imgs[modified_path]
-            drn_image = self.PWCLoader.load(modified_path, self.no_crop, image_data.box, mw, mh)
-            pwc_image = self.PWCLoader.load(original_path, self.no_crop, image_data.box, mw, mh)
-            h, w, ph, pw, drn_tensor = self.PWCLoader.preprocess(drn_image)
-            _, _, _, _, pwc_image = self.PWCLoader.preprocess(pwc_image)
+    # def update_original(self, flows: np.ndarray, modified_name: List[str], original_name: List[str]) -> np.ndarray:
+    #     n, mh, mw, _ = flows.shape
+    #     gt_flow = []
+    #     model = pwc_net('default').to(device)
+    #     model.eval()
+    #     for i in range(n):
+    #         flow = flows[i]
+    #         modified_path = modified_name[i]
+    #         original_path = original_name[i]
 
-            predict_flow = nn.functional.interpolate(model(pwc_tensor, drn_tensor), size=(h, w), mode='bilinear', align_corners=False)
-            predict_flow[:, 0, :, :] *= float(w) / float(pw)
-            predict_flow[:, 1, :, :] *= float(h) / float(ph)
+    #         image_data = self.DRNLoader.imgs[modified_path]
+    #         drn_image = self.PWCLoader.load(modified_path, self.no_crop, image_data.box, mw, mh)
+    #         pwc_image = self.PWCLoader.load(original_path, self.no_crop, image_data.box, mw, mh)
+    #         h, w, ph, pw, drn_tensor = self.PWCLoader.preprocess(drn_image)
+    #         _, _, _, _, pwc_image = self.PWCLoader.preprocess(pwc_image)
 
-            self.DRNLoader.imgs[modified_path].preprocess_sizes = tuple(mh, mw)
-            self.DRNLoader.imgs[modified_path].flow = flow
-            self.PWCLoader.imgs[original_path].img = pwc_image
-            self.PWCLoader.imgs[original_path].input_sizes = tuple(h, w)
-            self.PWCLoader.imgs[original_path].preprocess_sizes = tuple(ph, pw)
-            self.PWCLoader.imgs[original_path].flow = np.transpose(predict_flow[0, :, :, :].cpu().numpy(), (1, 2, 0))
-            gt_flow.append(self.PWCLoader.imgs[original_path].flow)
-        
-        return np.array(gt_flow)
+    #         predict_flow = nn.functional.interpolate(model(pwc_tensor, drn_tensor), size=(h, w), mode='bilinear', align_corners=False)
+    #         predict_flow[:, 0, :, :] *= float(w) / float(pw)
+    #         predict_flow[:, 1, :, :] *= float(h) / float(ph)
 
+    #         self.DRNLoader.imgs[modified_path].preprocess_sizes = tuple((mh, mw))
+    #         self.DRNLoader.imgs[modified_path].flow = flow
+    #         self.PWCLoader.imgs[original_path].img = pwc_image
+    #         self.PWCLoader.imgs[original_path].input_sizes = tuple((h, w))
+    #         self.PWCLoader.imgs[original_path].preprocess_sizes = tuple((ph, pw))
+    #         self.PWCLoader.imgs[original_path].flow = np.transpose(predict_flow[0, :, :, :].cpu().numpy(), (1, 2, 0))
+    #         gt_flow.append(self.PWCLoader.imgs[original_path].flow)
+
+    #     return np.array(gt_flow)
 
     def update_images(self) -> List[Dict[ImageType, ImageData]]:
         imgs = {}

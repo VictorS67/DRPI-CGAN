@@ -13,9 +13,11 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 def load(img_path, no_crop):
     if no_crop:
         img = Image.open(img_path).convert('RGB')
+        box = img.getbbox()
     else:
         img, box = detect_face(img_path)
-    return resize_shorter_side(img, 400)[0], box
+        img = resize_shorter_side(img, 400)[0]
+    return img, box
 
 
 def preprocess(img):

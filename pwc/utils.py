@@ -12,7 +12,6 @@ from tools.resize import resize_shorter_side, resize_img, crop_img
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-
 def load(img_path, no_crop, box, w, h):
     img = Image.open(img_path)
     if not no_crop:
@@ -42,6 +41,8 @@ def estimate(img1, img2, no_crop, box, w, h):
 
     h, w, preprocess_h, preprocess_w, img1_tensor = preprocess(img1)
     _, _, _, _, img2_tensor = preprocess(img2)
+
+    # print(f"img1_tensor: {img1_tensor.shape}, img2_tensor: {img2_tensor.shape}")
 
     model = pwc_net('default').to(device)
     model.eval()

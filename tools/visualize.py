@@ -54,17 +54,17 @@ def visualize_merge_heatmap(img, flow, output_path, max_flow_mag=7.0):
 
 
 def visualize_flow_heatmap_batched(flows, output_path, max_flow_mag=7.0):
-    m,n = flows.shape[::2]
-    concat_flow = np.rollaxis(flows,3,1).reshape(m,-1,n)
+    _, h, _, d = flows.shape
+    concat_flow = np.transpose(flows, (1, 2, 3, 0)).reshape(h, -1, d)
 
     visualize_flow_heatmap(concat_flow, output_path, max_flow_mag)
 
 
 def visualize_merge_heatmap_batched(imgs, flows, output_path, max_flow_mag=7.0):
-    i, j = imgs.shape[::2]
-    concat_img = np.rollaxis(imgs,3,1).reshape(i, -1, j)
+    _, ih, _, id = imgs.shape
+    concat_img = np.transpose(imgs, (1, 2, 3, 0)).reshape(ih, -1, id)
 
-    m, n = flows.shape[::2]
-    concat_flow = np.rollaxis(flows,3,1).reshape(m, -1, n)
+    _, fh, _, fd = flows.shape
+    concat_flow = np.transpose(flows, (1, 2, 3, 0)).reshape(fh, -1, fd)
 
     visualize_merge_heatmap(concat_img, concat_flow, output_path, max_flow_mag)

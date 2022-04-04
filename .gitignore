@@ -135,5 +135,8 @@ outputs/*
 # pretrained weights
 drn/weights/global.pth
 drn/weights/local.pth
+drpi_inputs/*
+drpi_outputs/*
+overfit_inputs/*
 
 

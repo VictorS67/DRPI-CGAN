@@ -18,6 +18,8 @@ def fill_up_weights(up):
 
 
 class DRNSeg(nn.Module):
+
+    @torch.enable_grad()
     def __init__(self, classes, pretrained_drn=False,
             pretrained_model=None, use_torch_up=False):
         super(DRNSeg, self).__init__()
@@ -44,6 +46,7 @@ class DRNSeg(nn.Module):
             up.weight.requires_grad = False
             self.up = up
 
+    @torch.enable_grad()
     def forward(self, x):
         x = self.base(x)
         x = self.seg(x)

@@ -38,12 +38,8 @@ def overfit(
     gen_config = GeneratorConfig()
     dis_config = DiscriminatorConfig()
 
-    # print("set configs!")
-
     generator = Generator(gen_config).to(device)
     discriminator = ConvGANDiscriminator(dis_config).to(device)
-
-    # print("set gan!")
 
     gan_dataset = GANDataset(basepath, no_crop)
     dataloader = torch.utils.data.DataLoader(
@@ -51,69 +47,86 @@ def overfit(
         collate_fn=gan_collate,
     )
 
-    # print("set dataset!")
-
     gen_loss = GeneratorLossFunction()
     dis_loss = GeneratorLossFunction()
-
-    # print("set loss function!")
 
     gen_optimizer = torch.optim.Adam(generator.parameters(), lr=learn_rate)
     dis_optimizer = torch.optim.Adam(discriminator.parameters(), lr=learn_rate)
 
-    # print("set optimizer!")
     modified, modified_data, original_data = next(iter(dataloader))
     for idx in tqdm(range(num_iterations)):
-        # print(f"training step: {idx}")
+        # (1) Update G network
         generator.zero_grad()
-        generator.train()
 
-        predicted_flow = generator(modified.to(device))
+        # 1.1 Get noise from modified image
+        noise = Variable(modified.to(device), requires_grad=True)
 
-        generator.eval()
-        flow, gt_flow, modified_nps = generator.inference(predicted_flow, modified_data, original_data, no_crop)
+        # 1.2 Generate fake flow from the noise
+        predicted_flow = generator(noise)  # [batch_size x D x H x W]
+        print(f"predicted_flow: {predicted_flow.requires_grad}")
+        classify_fool = discriminator(predicted_flow)  # [batch_size x D x H' x W']
+        fool = Variable(torch.ones_like(classify_fool).float().to(device), requires_grad=False)  # [batch_size x D x H' x W']
 
-        # (1) Update D network
-        discriminator.zero_grad()
-        discriminator.train()
+        # 1.3 Compute the generator loss on the fake flow
+        G_loss = gen_loss(classify_fool, fool)
 
-        classify_real = discriminator(gt_flow.to(device))
-        classify_fake = discriminator(flow.to(device))
-
-        real_loss = dis_loss(classify_real, True)
-        real_loss.backward()
-
-        fake_loss = dis_loss(classify_fake, False)
-        fake_loss.backward()
-
-        d_loss = real_loss + fake_loss
-        dis_optimizer.step()
-
-        # (2) Update G network
-        discriminator.eval()
-        classify_fake = gen_loss(discriminator(flow.to(device)), True)
-
-        classify_fake.backward()
+        #  1.4 Compute the gradients and run SGD on generator's parameters
+        G_loss.backward()
         gen_optimizer.step()
+
+        # (2) Update D network
+        discriminator.zero_grad()
+
+        # 2.1 Get noise from modified image
+        noise = Variable(modified.to(device), requires_grad=True)
+
+        # 2.2 Generate fake flow from the noise
+        predicted_flow = generator(noise)  # [batch_size x D x H x W]
+        classify_fake = discriminator(predicted_flow.detach())  # [batch_size x D x H' x W']
+        fake = Variable(torch.zeros_like(classify_fake).float().to(device), requires_grad=False)  # [batch_size x D x H' x W']
+
+        # 2.3 Compute the discriminator loss on the fake flow
+        D_fake_loss = dis_loss(classify_fake, fake)
+        # D_fake_loss.backward()
+
+        # 2.4 Form the GT flow by PWC-Net
+        with torch.no_grad():
+            generator.eval()
+            gt_flow, modified_nps = generator.inference(predicted_flow, modified_data, original_data, no_crop)
+
+        gt_flow = Variable(gt_flow.to(device), requires_grad=True)  # [batch_size x D x H x W]
+        classify_real = discriminator(gt_flow)  # [batch_size x D x H' x W']
+        real = Variable(torch.ones_like(classify_real).float().to(device), requires_grad=False)  # [batch_size x D x H' x W']
+
+        # 2.5 Compute the discriminator loss on the GT flow
+        D_real_loss = dis_loss(classify_real, real)
+        # D_real_loss.backward()
+
+        # 2.6 Compute the total discriminator loss
+        D_total_loss = (D_real_loss + D_fake_loss) / 2
+
+        # 2.7 Compute the gradients and run SGD on discriminator's parameters
+        D_total_loss.backward()
+        dis_optimizer.step()
 
         if (idx + 1) % log_frequency == 0:
             print(
                 f"Epoch [{idx}/{num_iterations}]: " + 
-                f"D Loss: {d_loss.item():.4f} " +
-                f"G Loss: {classify_fake.item():.4f} "
+                f"D Loss: {D_total_loss.item():.4f} " +
+                f"G Loss: {G_loss.item():.4f} "
             )
 
             flow_output_path = f"{outputpath}/{idx}_flow.png"
-            visualize_flow_heatmap_batched(flow.cpu().numpy(), flow_output_path, max_flow_mag=50.0)
+            visualize_flow_heatmap_batched(np.transpose(predicted_flow.cpu().numpy(), (0, 3, 1, 2)), flow_output_path, max_flow_mag=50.0)
 
             merge_output_path = f"{outputpath}/{idx}_merge.png"
-            visualize_merge_heatmap_batched(modified_nps, flow.cpu().numpy(), merge_output_path, max_flow_mag=50.0)
+            visualize_merge_heatmap_batched(modified_nps, np.transpose(predicted_flow.cpu().numpy(), (0, 3, 1, 2)), merge_output_path, max_flow_mag=50.0)
 
             flow_output_path = f"{outputpath}/{idx}_flow_gt.png"
-            visualize_flow_heatmap_batched(gt_flow.cpu().numpy(), flow_output_path)
+            visualize_flow_heatmap_batched(np.transpose(gt_flow.cpu().numpy(), (0, 3, 1, 2)), flow_output_path)
 
             merge_output_path = f"{outputpath}/{idx}_merge_gt.png"
-            visualize_merge_heatmap_batched(modified_nps, gt_flow.cpu().numpy(), merge_output_path)
+            visualize_merge_heatmap_batched(modified_nps, np.transpose(gt_flow.cpu().numpy(), (0, 3, 1, 2)), merge_output_path)
 
 
 def train(

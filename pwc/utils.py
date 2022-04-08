@@ -50,7 +50,7 @@ def estimate(img1, img2, no_crop, box, w, h):
     model = pwc_net('default').to(device)
     model.eval()
 
-    predict_flow = nn.functional.interpolate(model(img1_tensor, img2_tensor), size=(h, w), mode='bilinear', align_corners=False)
+    predict_flow = nn.functional.interpolate(model(img2_tensor, img1_tensor), size=(h, w), mode='bilinear', align_corners=False)
     predict_flow[:, 0, :, :] *= float(w) / float(preprocess_w)
     predict_flow[:, 1, :, :] *= float(h) / float(preprocess_h)
 

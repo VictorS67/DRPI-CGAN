@@ -73,7 +73,7 @@ def overfit(
         G_loss = gen_loss(classify_fool, fool)
         # G_loss.register_hook(lambda grad: print(f"G_loss: {grad}"))
 
-        #  1.4 Compute the gradients and run SGD on generator's parameters
+        # 1.4 Compute the gradients and run SGD on generator's parameters
         G_loss.backward()
         gen_optimizer.step()
 
@@ -191,7 +191,7 @@ def train(
             G_loss = gen_loss(classify_fool, fool)
             # G_loss.register_hook(lambda grad: print(f"G_loss: {grad}"))
 
-            #  1.4 Compute the gradients and run SGD on generator's parameters
+            # 1.4 Compute the gradients and run SGD on generator's parameters
             G_loss.backward()
             gen_optimizer.step()
 

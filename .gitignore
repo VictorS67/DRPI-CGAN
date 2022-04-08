@@ -138,5 +138,5 @@ drn/weights/local.pth
 drpi_inputs/*
 drpi_outputs/*
 overfit_inputs/*
-
+examples/*
 

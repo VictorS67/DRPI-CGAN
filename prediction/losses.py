@@ -30,7 +30,7 @@ class GeneratorLossFunction(nn.Module):
 
     # @torch.enable_grad()
     def forward(self, predictions: Tensor, targets: Tensor) -> Tensor:
-        loss = binary_cross_entropy_loss(predictions, targets)
+        loss = self.loss(predictions, targets)
 
         return loss
 

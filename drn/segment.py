@@ -4,6 +4,7 @@ import torch.nn as nn
 
 from drn.drn import drn_c_26
 
+# torch.set_grad_enabled(True) # make sure to not compute gradients for computational performance
 
 def fill_up_weights(up):
     w = up.weight.data
@@ -45,6 +46,7 @@ class DRNSeg(nn.Module):
             up.weight.requires_grad = False
             self.up = up
 
+    # @torch.enable_grad()
     def forward(self, x):
         x = self.base(x)
         x = self.seg(x)

@@ -11,9 +11,11 @@ except:
 
 assert(int(str('').join(torch.__version__.split('.')[0:2])) >= 13) # requires at least pytorch version 1.3.0
 
-torch.set_grad_enabled(False) # make sure to not compute gradients for computational performance
+# torch.set_grad_enabled(False) # make sure to not compute gradients for computational performance
 
 torch.backends.cudnn.enabled = True # make sure to use cudnn for computational performance
+
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 ##########################################################
 
@@ -25,7 +27,7 @@ def backwarp(tenInput, tenFlow):
         tenHor = torch.linspace(-1.0 + (1.0 / tenFlow.shape[3]), 1.0 - (1.0 / tenFlow.shape[3]), tenFlow.shape[3]).view(1, 1, 1, -1).repeat(1, 1, tenFlow.shape[2], 1)
         tenVer = torch.linspace(-1.0 + (1.0 / tenFlow.shape[2]), 1.0 - (1.0 / tenFlow.shape[2]), tenFlow.shape[2]).view(1, 1, -1, 1).repeat(1, 1, 1, tenFlow.shape[3])
 
-        backwarp_tenGrid[str(tenFlow.shape)] = torch.cat([ tenHor, tenVer ], 1).cuda()
+        backwarp_tenGrid[str(tenFlow.shape)] = torch.cat([ tenHor, tenVer ], 1).to(device)
 
     if str(tenFlow.shape) not in backwarp_tenPartial:
         backwarp_tenPartial[str(tenFlow.shape)] = tenFlow.new_ones([ tenFlow.shape[0], 1, tenFlow.shape[2], tenFlow.shape[3] ])

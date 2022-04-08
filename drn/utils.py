@@ -7,8 +7,6 @@ from drn.segment import DRNSeg
 from tools.resize import resize_shorter_side, resize_img
 from tools.face_detection import detect_face
 
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-
 
 def load(img_path, no_crop):
     if no_crop:
@@ -26,14 +24,15 @@ def preprocess(img):
         transforms.Normalize(
             mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
-    img_tensor = tf(img).to(device)
+    img_tensor = tf(img)
 
     return img_tensor.unsqueeze(0)
 
 
 def predict_flow(img, no_crop, model_path=None):
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     img, box = load(img, no_crop)
-    img = preprocess(img)
+    img_tensor = preprocess(img).to(device)
 
     model = DRNSeg(2)
     if model_path is not None:
@@ -43,6 +42,6 @@ def predict_flow(img, no_crop, model_path=None):
     model.eval()
 
     with torch.no_grad():
-        flow = model(img)[0]
+        flow = model(img_tensor)[0]
 
     return flow

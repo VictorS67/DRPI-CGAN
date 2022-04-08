@@ -5,16 +5,7 @@ from dlib import cnn_face_detection_model_v1 as face_detect_model
 
 cnn_face_detector = None
 
-
-def face_detection(
-        img_path,
-        verbose=False,
-        model_file='tools/dlib_face_detector/mmod_human_face_detector.dat'):
-    """
-    Detects faces using dlib cnn face detection, and extend the bounding box
-    to include the entire face.
-    """
-    def shrink(img, max_length=2048):
+def shrink(img, max_length=2048):
         ow, oh = img.size
         if max_length >= max(ow, oh):
             return img, 1.0
@@ -26,6 +17,16 @@ def face_detection(
         w = int(ow * mult)
         h = int(oh * mult)
         return img.resize((w, h), Image.BILINEAR), mult
+
+
+def face_detection(
+        img_path,
+        verbose=False,
+        model_file='tools/dlib_face_detector/mmod_human_face_detector.dat'):
+    """
+    Detects faces using dlib cnn face detection, and extend the bounding box
+    to include the entire face.
+    """
 
     global cnn_face_detector
     if cnn_face_detector is None:
@@ -66,8 +67,12 @@ def face_detection(
 def detect_face(img_path):
     faces = face_detection(img_path, verbose=False)
     if len(faces) == 0:
-        print("no face detected by dlib, exiting")
-        sys.exit()
-    img, box = faces[0]
+        print("no face detected by dlib")
+        print(img_path)
+        # sys.exit()
+        img = Image.open(img_path).convert('RGB')
+        box = img.getbbox()
+    else:
+        img, box = faces[0]
 
     return img, box

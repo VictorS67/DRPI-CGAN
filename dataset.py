@@ -34,7 +34,11 @@ class GANDataset:
 def gan_collate(
     batch: List[Tuple[Tensor, ImageData, ImageData]]
 ) -> Tuple[Tensor, List[ImageData], List[ImageData]]:
+    # print(f"batch: {batch}")
     modified_tensors, modified_data, original_data = list(zip(*batch))
+    # print(f"modified_tensors: {modified_tensors}")
+    # print(f"modified_data: {modified_data}")
+    # print(f"original_data: {original_data}")
 
     return (
         torch.stack(modified_tensors), 

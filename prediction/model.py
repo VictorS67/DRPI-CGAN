@@ -39,7 +39,7 @@ class Generator(nn.Module):
 
         assert(config.num_out_channels == 2)
 
-        self.model = DRNSeg(config.num_out_channels)
+        self.model = DRNSeg(config.num_out_channels, pretrained_drn=True)
 
     def forward(self, x):
         out = self.model(x)
@@ -71,7 +71,10 @@ class Generator(nn.Module):
             h, w, ph, pw, drn_tensor = pwc_utils.preprocess(drn_image)
             _, _, _, _, pwc_tensor = pwc_utils.preprocess(pwc_image)
 
-            predict_flow = nn.functional.interpolate(model(drn_tensor, pwc_tensor), size=(h, w), mode='bilinear', align_corners=False)
+            drn_tensor = drn_tensor.to(device)
+            pwc_tensor = pwc_tensor.to(device)
+
+            predict_flow = nn.functional.interpolate(model(pwc_tensor, drn_tensor), size=(h, w), mode='bilinear', align_corners=False)
             predict_flow[:, 0, :, :] *= float(w) / float(pw)
             predict_flow[:, 1, :, :] *= float(h) / float(ph)
             gt_flow.append(predict_flow[0, :, :, :])

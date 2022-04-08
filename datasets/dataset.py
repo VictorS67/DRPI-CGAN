@@ -12,7 +12,7 @@ import drn.utils as drn_utils
 import pwc.utils as pwc_utils
 from pwc.pwc import pwc_net
 
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
 class DatasetConfig:
 
     basepath: str

@@ -48,6 +48,7 @@ class ConvGANDiscriminator(Discriminator):
             nn.Sigmoid()
         )
 
+    # @torch.enable_grad()
     def forward(self, x):
         conv = self.conv1(x)
         conv = self.conv2(conv)

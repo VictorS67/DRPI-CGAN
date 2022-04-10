@@ -58,7 +58,6 @@ def overfit(
     modified, original, modified_data, original_data = next(iter(dataloader))
     for idx in tqdm(range(num_iterations)):
         original = Variable(original.to(device))
-        # print(f"original: {original.shape} - {original.requires_grad}")
 
         # (1) Update G network
         generator.zero_grad()
@@ -67,37 +66,24 @@ def overfit(
 
         # 1.1 Get noise from modified image
         noise = Variable(modified.to(device))
-        # print(f"noise: {noise.shape}")
 
         # 1.2 Generate fake flow from the noise
         predicted_flow = generator(noise)  # [batch_size x D x H x W]
-        # print(f"gradients: {predicted_flow.grad}")
-        # predicted_flow_fool = predicted_flow
-        # print(f"predicted_flow: {predicted_flow.shape}")
-        # print(f"predicted_flow: {predicted_flow.requires_grad}")
 
         with torch.no_grad():
             gt_flow_epe, _ = generator.inference(predicted_flow, modified_data, original_data, no_crop)
 
         predicted_flow_warpped = warp(noise, predicted_flow)
         predicted_flow_fool = original - predicted_flow_warpped
-        # predicted_flow_G = predicted_flow_fool
 
         _, _, H, W = predicted_flow_fool.shape
         sampled_point = np.random.choice(np.arange(min(H, W) - 64), 1).item()
         predicted_flow_G = predicted_flow_fool[:, :, sampled_point:sampled_point+64, sampled_point:sampled_point+64]  # [batch_size x D x 64 x 64]
 
-        # predicted_flow_epe_patched = predicted_flow[:, :, sampled_point:sampled_point+64, sampled_point:sampled_point+64]  # [batch_size x D x 64 x 64]
-        # gt_flow_epe_patched = gt_flow_epe[:, :, sampled_point:sampled_point+64, sampled_point:sampled_point+64]  # [batch_size x D x 64 x 64]
-
-        # predicted_flow_warpped_patched = predicted_flow_warpped[:, :, sampled_point:sampled_point+64, sampled_point:sampled_point+64]  # [batch_size x D x 64 x 64]
-        # original_patched = original[:, :, sampled_point:sampled_point+64, sampled_point:sampled_point+64]  # [batch_size x D x 64 x 64]
-
         classify_fool = discriminator(predicted_flow_G)  # [batch_size x 1 x 1 x 1]
         fool = Variable(torch.ones_like(classify_fool).float().to(device), requires_grad=False)  # [batch_size x 1 x 1 x 1]
 
         # 1.3 Compute the generator loss on the fake flow
-        # G_loss = gen_loss(classify_fool, fool)
         G_loss = gen_loss(predicted_flow, gt_flow_epe, predicted_flow_warpped, original, classify_fool, fool)
 
         # 1.4 Compute the gradients and run SGD on generator's parameters
@@ -114,10 +100,8 @@ def overfit(
 
         # 2.2 Generate fake flow from the noise
         predicted_flow = generator(noise)  # [batch_size x D x H x W]
-        # predicted_flow_fake = predicted_flow
 
         predicted_flow_fake = original - warp(noise, predicted_flow)
-        # predicted_flow_D_fake = predicted_flow_fake
 
         _, _, H, W = predicted_flow_fake.shape
         sampled_point = np.random.choice(np.arange(min(H, W) - 64), 1).item()
@@ -127,18 +111,14 @@ def overfit(
 
         # 2.3 Compute the discriminator loss on the fake flow
         D_fake_loss = dis_loss(classify_fake, fake)
-        # D_fake_loss.register_hook(lambda grad: print(f"D_fake_loss: {grad}"))
-        # D_fake_loss.backward()
 
         # 2.4 Form the GT flow by PWC-Net
         with torch.no_grad():
             gt_flow, modified_nps = generator.inference(predicted_flow, modified_data, original_data, no_crop)
 
         gt_flow = Variable(gt_flow.to(device))  # [batch_size x D x H x W]
-        # gt_flow_real = gt_flow
 
         gt_flow_real = original - warp(noise, gt_flow)
-        # gt_flow_D_real = gt_flow_real
 
         gt_flow_D_real = gt_flow_real[:, :, sampled_point:sampled_point+64, sampled_point:sampled_point+64]  # [batch_size x D x 64 x 64]
         classify_real = discriminator(gt_flow_D_real)  # [batch_size x 1 x 1 x 1]
@@ -146,8 +126,6 @@ def overfit(
 
         # 2.5 Compute the discriminator loss on the GT flow
         D_real_loss = dis_loss(classify_real, real)
-        # D_real_loss.register_hook(lambda grad: print(f"D_real_loss: {grad}"))
-        # D_real_loss.backward()
 
         # 2.6 Compute the total discriminator loss
         D_total_loss = (D_real_loss + D_fake_loss) / 2
@@ -207,14 +185,16 @@ def train(
         collate_fn=gan_collate,
     )
 
-    gen_loss = BCELossFunction()
+    gen_loss = MixedGenLossFunction()
     dis_loss = BCELossFunction()
 
     gen_optimizer = torch.optim.Adam(generator.parameters(), lr=learn_rate)
     dis_optimizer = torch.optim.Adam(discriminator.parameters(), lr=learn_rate)
 
     for epoch in range(num_epochs):
-        for idx, (modified, modified_data, original_data) in tqdm(enumerate(dataloader)):
+        for idx, (modified, original, modified_data, original_data) in tqdm(enumerate(dataloader)):
+            original = Variable(original.to(device))
+
             # (1) Update G network
             generator.zero_grad()
             discriminator.eval()
@@ -225,13 +205,22 @@ def train(
 
             # 1.2 Generate fake flow from the noise
             predicted_flow = generator(noise)  # [batch_size x D x H x W]
-            # print(f"predicted_flow: {predicted_flow.requires_grad}")
-            classify_fool = discriminator(predicted_flow)  # [batch_size x D x H' x W']
-            fool = Variable(torch.ones_like(classify_fool).float().to(device), requires_grad=False)  # [batch_size x D x H' x W']
+
+            with torch.no_grad():
+                gt_flow_epe, _ = generator.inference(predicted_flow, modified_data, original_data, no_crop)
+
+            predicted_flow_warpped = warp(noise, predicted_flow)
+            predicted_flow_fool = original - predicted_flow_warpped
+
+            _, _, H, W = predicted_flow_fool.shape
+            sampled_point = np.random.choice(np.arange(min(H, W) - 64), 1).item()
+            predicted_flow_G = predicted_flow_fool[:, :, sampled_point:sampled_point+64, sampled_point:sampled_point+64]  # [batch_size x D x 64 x 64]
+
+            classify_fool = discriminator(predicted_flow_G)  # [batch_size x 1 x 1 x 1]
+            fool = Variable(torch.ones_like(classify_fool).float().to(device), requires_grad=False)  # [batch_size x 1 x 1 x 1]
 
             # 1.3 Compute the generator loss on the fake flow
-            G_loss = gen_loss(classify_fool, fool)
-            # G_loss.register_hook(lambda grad: print(f"G_loss: {grad}"))
+            G_loss = gen_loss(predicted_flow, gt_flow_epe, predicted_flow_warpped, original, classify_fool, fool)
 
             # 1.4 Compute the gradients and run SGD on generator's parameters
             G_loss.backward()
@@ -247,26 +236,32 @@ def train(
 
             # 2.2 Generate fake flow from the noise
             predicted_flow = generator(noise)  # [batch_size x D x H x W]
-            classify_fake = discriminator(predicted_flow.detach())  # [batch_size x D x H' x W']
-            fake = Variable(torch.zeros_like(classify_fake).float().to(device), requires_grad=False)  # [batch_size x D x H' x W']
+
+            predicted_flow_fake = original - warp(noise, predicted_flow)
+
+            _, _, H, W = predicted_flow_fake.shape
+            sampled_point = np.random.choice(np.arange(min(H, W) - 64), 1).item()
+            predicted_flow_D_fake = predicted_flow_fake[:, :, sampled_point:sampled_point+64, sampled_point:sampled_point+64]  # [batch_size x D x 64 x 64]
+            classify_fake = discriminator(predicted_flow_D_fake.detach())  # [batch_size x 1 x 1 x 1]
+            fake = Variable(torch.zeros_like(classify_fake).float().to(device), requires_grad=False)  # [batch_size x 1 x 1 x 1]
 
             # 2.3 Compute the discriminator loss on the fake flow
             D_fake_loss = dis_loss(classify_fake, fake)
-            # D_fake_loss.register_hook(lambda grad: print(f"D_fake_loss: {grad}"))
-            # D_fake_loss.backward()
 
             # 2.4 Form the GT flow by PWC-Net
             with torch.no_grad():
                 gt_flow, modified_nps = generator.inference(predicted_flow, modified_data, original_data, no_crop)
 
             gt_flow = Variable(gt_flow.to(device))  # [batch_size x D x H x W]
-            classify_real = discriminator(gt_flow)  # [batch_size x D x H' x W']
-            real = Variable(torch.ones_like(classify_real).float().to(device), requires_grad=False)  # [batch_size x D x H' x W']
+
+            gt_flow_real = original - warp(noise, gt_flow)
+
+            gt_flow_D_real = gt_flow_real[:, :, sampled_point:sampled_point+64, sampled_point:sampled_point+64]  # [batch_size x D x 64 x 64]
+            classify_real = discriminator(gt_flow_D_real)  # [batch_size x 1 x 1 x 1]
+            real = Variable(torch.ones_like(classify_real).float().to(device), requires_grad=False)  # [batch_size x 1 x 1 x 1]
 
             # 2.5 Compute the discriminator loss on the GT flow
             D_real_loss = dis_loss(classify_real, real)
-            # D_real_loss.register_hook(lambda grad: print(f"D_real_loss: {grad}"))
-            # D_real_loss.backward()
 
             # 2.6 Compute the total discriminator loss
             D_total_loss = (D_real_loss + D_fake_loss) / 2

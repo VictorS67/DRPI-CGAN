@@ -64,8 +64,9 @@ class Dataset(torch.utils.data.Dataset):
                 for image_path in images:
                     img_data = ImageData()
                     # print(f"f: {f}")
-                    # print(f"image_path: {image_path}")
-                    img_data.name = str(image_path)
+                    # print(f"image_path: {str(image_path).split('.')[0]} - {str(image_path).split('.')[-1]}")
+                    img_data.name = str(image_path).split('.')[0]
+                    img_data.suffix = str(image_path).split('.')[-1]
                     if f.stem == ImageType.MODIFIED:
                         img_data.img, img_data.box = self.DRNLoader.load(image_path, self.no_crop)
                         img_data.data = self.DRNLoader.preprocess(img_data.img)[0]
@@ -73,14 +74,14 @@ class Dataset(torch.utils.data.Dataset):
                         img_data.input_sizes = tuple((h, w))
                         img_data.preprocess_sizes = None
                         img_data.flow = None
-                        self.DRNLoader.imgs[image_path] = img_data
+                        self.DRNLoader.imgs[img_data.name] = img_data
                     else:
-                        img_data.img = None
-                        img_data.data = None
+                        img_data.img, img_data.box = self.DRNLoader.load(image_path, self.no_crop)
+                        img_data.data = self.DRNLoader.preprocess(img_data.img)[0]
                         img_data.input_sizes = None
                         img_data.preprocess_sizes = None
                         img_data.flow = None
-                        self.PWCLoader.imgs[image_path] = img_data
+                        self.PWCLoader.imgs[img_data.name] = img_data
 
         return self.update_images()
         # imgs = []

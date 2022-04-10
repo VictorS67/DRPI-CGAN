@@ -5,6 +5,19 @@ import PIL.Image as Image
 import numpy as np
 
 
+def visualize_warp(im, flow, output_path, alpha=1, interp=cv2.INTER_CUBIC):
+    height, width, _ = flow.shape
+    cart = np.dstack(np.meshgrid(np.arange(width), np.arange(height)))
+    pixel_map = (cart + alpha * flow).astype(np.float32)
+    warped = cv2.remap(
+        im,
+        pixel_map[:, :, 0],
+        pixel_map[:, :, 1],
+        interp,
+        borderMode=cv2.BORDER_REPLICATE)
+    Image.fromarray(warped).save(output_path, quality=90)
+
+
 def visualize_flow_heatmap(flow, output_path, max_flow_mag=7.0):
     min_flow_mag = 0.5
     flow_magn = np.sqrt(flow[:, :, 0]**2 + flow[:, :, 1]**2)
@@ -68,3 +81,13 @@ def visualize_merge_heatmap_batched(imgs, flows, output_path, max_flow_mag=7.0):
     concat_flow = np.transpose(flows, (1, 2, 3, 0)).reshape(fh, -1, fd)
 
     visualize_merge_heatmap(concat_img, concat_flow, output_path, max_flow_mag)
+
+
+def visualize_warp_batched(imgs, flows, output_path):
+    _, ih, _, id = imgs.shape
+    concat_img = np.transpose(imgs, (1, 2, 3, 0)).reshape(ih, -1, id)
+
+    _, fh, _, fd = flows.shape
+    concat_flow = np.transpose(flows, (1, 2, 3, 0)).reshape(fh, -1, fd)
+
+    visualize_warp(concat_img, concat_flow, output_path)

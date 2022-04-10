@@ -15,12 +15,14 @@ from torch.autograd import Variable
 
 from pwc.utils import estimate
 from drn.utils import predict_flow
-from tools.visualize import visualize_flow_heatmap, visualize_merge_heatmap, visualize_flow_heatmap_batched, visualize_merge_heatmap_batched
-from tools.resize import resize_img, resize_shorter_side
+from drn.utils import preprocess as drn_preprocess
+from tools.visualize import *
+from tools.resize import resize_img, resize_shorter_side, crop_img
 from tools.face_detection import detect_face
+from tools.warp import warp
 from prediction.model import GeneratorConfig, DiscriminatorConfig, Generator, Discriminator
 from prediction.modules import ConvGANDiscriminator
-from prediction.losses import GeneratorLossFunction, DiscriminatorLossFunction
+from prediction.losses import BCELossFunction, LSLossFunction, MixedGenLossFunction
 from dataset import GANDataset, gan_collate
 
 
@@ -28,8 +30,8 @@ def overfit(
     basepath: str, 
     outputpath: str, 
     no_crop: bool = False,
-    num_iterations: int = 700,
-    log_frequency: int = 50,
+    num_iterations: int = 5000,
+    log_frequency: int = 100,
     learn_rate: float = 1e-4,
 ) -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -47,14 +49,17 @@ def overfit(
         collate_fn=gan_collate,
     )
 
-    gen_loss = GeneratorLossFunction()
-    dis_loss = GeneratorLossFunction()
+    gen_loss = MixedGenLossFunction()
+    dis_loss = BCELossFunction()
 
     gen_optimizer = torch.optim.Adam(generator.parameters(), lr=learn_rate)
     dis_optimizer = torch.optim.Adam(discriminator.parameters(), lr=learn_rate)
 
-    modified, modified_data, original_data = next(iter(dataloader))
+    modified, original, modified_data, original_data = next(iter(dataloader))
     for idx in tqdm(range(num_iterations)):
+        original = Variable(original.to(device))
+        # print(f"original: {original.shape} - {original.requires_grad}")
+
         # (1) Update G network
         generator.zero_grad()
         discriminator.eval()
@@ -62,16 +67,38 @@ def overfit(
 
         # 1.1 Get noise from modified image
         noise = Variable(modified.to(device))
+        # print(f"noise: {noise.shape}")
 
         # 1.2 Generate fake flow from the noise
         predicted_flow = generator(noise)  # [batch_size x D x H x W]
+        # print(f"gradients: {predicted_flow.grad}")
+        # predicted_flow_fool = predicted_flow
+        # print(f"predicted_flow: {predicted_flow.shape}")
         # print(f"predicted_flow: {predicted_flow.requires_grad}")
-        classify_fool = discriminator(predicted_flow)  # [batch_size x D x H' x W']
-        fool = Variable(torch.ones_like(classify_fool).float().to(device), requires_grad=False)  # [batch_size x D x H' x W']
+
+        with torch.no_grad():
+            gt_flow_epe, _ = generator.inference(predicted_flow, modified_data, original_data, no_crop)
+
+        predicted_flow_warpped = warp(noise, predicted_flow)
+        predicted_flow_fool = original - predicted_flow_warpped
+        # predicted_flow_G = predicted_flow_fool
+
+        _, _, H, W = predicted_flow_fool.shape
+        sampled_point = np.random.choice(np.arange(min(H, W) - 64), 1).item()
+        predicted_flow_G = predicted_flow_fool[:, :, sampled_point:sampled_point+64, sampled_point:sampled_point+64]  # [batch_size x D x 64 x 64]
+
+        # predicted_flow_epe_patched = predicted_flow[:, :, sampled_point:sampled_point+64, sampled_point:sampled_point+64]  # [batch_size x D x 64 x 64]
+        # gt_flow_epe_patched = gt_flow_epe[:, :, sampled_point:sampled_point+64, sampled_point:sampled_point+64]  # [batch_size x D x 64 x 64]
+
+        # predicted_flow_warpped_patched = predicted_flow_warpped[:, :, sampled_point:sampled_point+64, sampled_point:sampled_point+64]  # [batch_size x D x 64 x 64]
+        # original_patched = original[:, :, sampled_point:sampled_point+64, sampled_point:sampled_point+64]  # [batch_size x D x 64 x 64]
+
+        classify_fool = discriminator(predicted_flow_G)  # [batch_size x 1 x 1 x 1]
+        fool = Variable(torch.ones_like(classify_fool).float().to(device), requires_grad=False)  # [batch_size x 1 x 1 x 1]
 
         # 1.3 Compute the generator loss on the fake flow
-        G_loss = gen_loss(classify_fool, fool)
-        # G_loss.register_hook(lambda grad: print(f"G_loss: {grad}"))
+        # G_loss = gen_loss(classify_fool, fool)
+        G_loss = gen_loss(predicted_flow, gt_flow_epe, predicted_flow_warpped, original, classify_fool, fool)
 
         # 1.4 Compute the gradients and run SGD on generator's parameters
         G_loss.backward()
@@ -87,8 +114,16 @@ def overfit(
 
         # 2.2 Generate fake flow from the noise
         predicted_flow = generator(noise)  # [batch_size x D x H x W]
-        classify_fake = discriminator(predicted_flow.detach())  # [batch_size x D x H' x W']
-        fake = Variable(torch.zeros_like(classify_fake).float().to(device), requires_grad=False)  # [batch_size x D x H' x W']
+        # predicted_flow_fake = predicted_flow
+
+        predicted_flow_fake = original - warp(noise, predicted_flow)
+        # predicted_flow_D_fake = predicted_flow_fake
+
+        _, _, H, W = predicted_flow_fake.shape
+        sampled_point = np.random.choice(np.arange(min(H, W) - 64), 1).item()
+        predicted_flow_D_fake = predicted_flow_fake[:, :, sampled_point:sampled_point+64, sampled_point:sampled_point+64]  # [batch_size x D x 64 x 64]
+        classify_fake = discriminator(predicted_flow_D_fake.detach())  # [batch_size x 1 x 1 x 1]
+        fake = Variable(torch.zeros_like(classify_fake).float().to(device), requires_grad=False)  # [batch_size x 1 x 1 x 1]
 
         # 2.3 Compute the discriminator loss on the fake flow
         D_fake_loss = dis_loss(classify_fake, fake)
@@ -100,8 +135,14 @@ def overfit(
             gt_flow, modified_nps = generator.inference(predicted_flow, modified_data, original_data, no_crop)
 
         gt_flow = Variable(gt_flow.to(device))  # [batch_size x D x H x W]
-        classify_real = discriminator(gt_flow)  # [batch_size x D x H' x W']
-        real = Variable(torch.ones_like(classify_real).float().to(device), requires_grad=False)  # [batch_size x D x H' x W']
+        # gt_flow_real = gt_flow
+
+        gt_flow_real = original - warp(noise, gt_flow)
+        # gt_flow_D_real = gt_flow_real
+
+        gt_flow_D_real = gt_flow_real[:, :, sampled_point:sampled_point+64, sampled_point:sampled_point+64]  # [batch_size x D x 64 x 64]
+        classify_real = discriminator(gt_flow_D_real)  # [batch_size x 1 x 1 x 1]
+        real = Variable(torch.ones_like(classify_real).float().to(device), requires_grad=False)  # [batch_size x 1 x 1 x 1]
 
         # 2.5 Compute the discriminator loss on the GT flow
         D_real_loss = dis_loss(classify_real, real)
@@ -123,18 +164,19 @@ def overfit(
             )
 
             flow_output_path = f"{outputpath}/{idx}_flow.png"
-            # print(f"predicted_flow: {np.transpose(predicted_flow.detach().cpu().numpy(), (0, 2, 3, 1)).shape}")
-            # print(f"modified_nps: {modified_nps.shape}")
-            visualize_flow_heatmap_batched(np.transpose(predicted_flow.detach().cpu().numpy(), (0, 2, 3, 1)), flow_output_path, max_flow_mag=50.0)
+            visualize_flow_heatmap_batched(np.transpose(predicted_flow.detach().cpu().numpy(), (0, 2, 3, 1)), flow_output_path, max_flow_mag=7.0)
 
             merge_output_path = f"{outputpath}/{idx}_merge.png"
-            visualize_merge_heatmap_batched(modified_nps, np.transpose(predicted_flow.detach().cpu().numpy(), (0, 2, 3, 1)), merge_output_path, max_flow_mag=50.0)
+            visualize_merge_heatmap_batched(modified_nps, np.transpose(predicted_flow.detach().cpu().numpy(), (0, 2, 3, 1)), merge_output_path, max_flow_mag=7.0)
 
             flow_output_path = f"{outputpath}/{idx}_flow_gt.png"
             visualize_flow_heatmap_batched(np.transpose(gt_flow.detach().cpu().numpy(), (0, 2, 3, 1)), flow_output_path)
 
             merge_output_path = f"{outputpath}/{idx}_merge_gt.png"
             visualize_merge_heatmap_batched(modified_nps, np.transpose(gt_flow.detach().cpu().numpy(), (0, 2, 3, 1)), merge_output_path)
+
+            wrap_output_path = f"{outputpath}/{idx}_wrap.png"
+            visualize_warp_batched(modified_nps, np.transpose(predicted_flow.detach().cpu().numpy(), (0, 2, 3, 1)), wrap_output_path)
 
 
 def train(
@@ -165,8 +207,8 @@ def train(
         collate_fn=gan_collate,
     )
 
-    gen_loss = GeneratorLossFunction()
-    dis_loss = GeneratorLossFunction()
+    gen_loss = BCELossFunction()
+    dis_loss = BCELossFunction()
 
     gen_optimizer = torch.optim.Adam(generator.parameters(), lr=learn_rate)
     dis_optimizer = torch.optim.Adam(discriminator.parameters(), lr=learn_rate)
@@ -241,16 +283,19 @@ def train(
                 )
 
                 flow_output_path = f"{outputpath}/{epoch}_{idx}_flow.png"
-                visualize_flow_heatmap_batched(np.transpose(predicted_flow.detach().cpu().numpy(), (0, 2, 3, 1)), flow_output_path, max_flow_mag=50.0)
+                visualize_flow_heatmap_batched(np.transpose(predicted_flow.detach().cpu().numpy(), (0, 2, 3, 1)), flow_output_path, max_flow_mag=7.0)
 
                 merge_output_path = f"{outputpath}/{epoch}_{idx}_merge.png"
-                visualize_merge_heatmap_batched(modified_nps, np.transpose(predicted_flow.detach().cpu().numpy(), (0, 2, 3, 1)), merge_output_path, max_flow_mag=50.0)
+                visualize_merge_heatmap_batched(modified_nps, np.transpose(predicted_flow.detach().cpu().numpy(), (0, 2, 3, 1)), merge_output_path, max_flow_mag=7.0)
 
                 flow_output_path = f"{outputpath}/{epoch}_{idx}_flow_gt.png"
                 visualize_flow_heatmap_batched(np.transpose(gt_flow.detach().cpu().numpy(), (0, 2, 3, 1)), flow_output_path)
 
                 merge_output_path = f"{outputpath}/{epoch}_{idx}_merge_gt.png"
                 visualize_merge_heatmap_batched(modified_nps, np.transpose(gt_flow.detach().cpu().numpy(), (0, 2, 3, 1)), merge_output_path)
+
+                wrap_output_path = f"{outputpath}/{epoch}_{idx}_wrap.png"
+                visualize_warp_batched(modified_nps, np.transpose(predicted_flow.detach().cpu().numpy(), (0, 2, 3, 1)), wrap_output_path)
 
 
 if __name__ == "__main__":
@@ -269,7 +314,7 @@ if __name__ == "__main__":
     # args = parser.parse_args()
 
     # # DRN testing
-    # predicted_flow = predict_flow(args.modify, args.no_crop, model_path=args.model).cpu().numpy()
+    # predicted_flow = predict_flow(args.modify, args.no_crop, model_path=args.model).detach().cpu().numpy()
     # predicted_flow = np.transpose(predicted_flow, (1, 2, 0))
     # h, w, d = predicted_flow.shape
 
@@ -281,9 +326,11 @@ if __name__ == "__main__":
     # modified_np = np.asarray(modified)
     # visualize_flow_heatmap(predicted_flow, os.path.join(args.output_dir, 'drn_flow_heatmap.jpg'))
     # visualize_merge_heatmap(modified_np, predicted_flow, os.path.join(args.output_dir, 'drn_merge_heatmap.jpg'))
+    # visualize_warp(modified_np, predicted_flow, os.path.join(args.output_dir, 'drn_wrapped.jpg'))
 
     # # PWC testing
-    # flow = estimate(args.modify, args.origin, args.no_crop, box, w, h).cpu().numpy()
+    # flow = estimate(args.modify, args.origin, args.no_crop, box, w, h).detach()
+    # flow = flow.cpu().numpy()
     # flow = np.transpose(flow, (1, 2, 0))
     # fh, fw, fd = flow.shape
 
@@ -293,3 +340,11 @@ if __name__ == "__main__":
 
     # visualize_flow_heatmap(flow, os.path.join(args.output_dir, 'pwc_flow_heatmap.jpg'), 7.0)
     # visualize_merge_heatmap(modified_np, flow, os.path.join(args.output_dir, 'pwc_merge_heatmap.jpg'), 7.0)
+    # visualize_warp(modified_np, flow, os.path.join(args.output_dir, 'pwc_wrapped.jpg'))
+
+    # o_img = Image.open(args.origin).convert('RGB')
+    # if not args.no_crop:
+    #     o_img, _ = crop_img(o_img, box)
+    # o_img = resize_img(o_img, w, h)[0]
+    # o_img.save(os.path.join(args.output_dir, 'reshaped_original.jpg'), quality=90)
+    # modified.save(os.path.join(args.output_dir, 'reshaped_modified.jpg'), quality=90)

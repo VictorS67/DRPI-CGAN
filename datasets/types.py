@@ -13,6 +13,7 @@ class ImageType(str):
 class ImageData:
 
     name: str
+    suffix: str
     img: Image.Image
     flow: numpy.ndarray
     data: torch.Tensor

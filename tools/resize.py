@@ -6,19 +6,21 @@ def resize_shorter_side(img, min_length):
     Resize the shorter side of img to min_length while
     preserving the aspect ratio.
     """
-    ow, oh = img.size
-    mult = 8
-    if ow < oh:
-        if ow == min_length and oh % mult == 0:
-            return img, (ow, oh)
-        w = min_length
-        h = int(min_length * oh / ow)
-    else:
-        if oh == min_length and ow % mult == 0:
-            return img, (ow, oh)
-        h = min_length
-        w = int(min_length * ow / oh)
-    return img.resize((w, h), Image.BICUBIC), (w, h)
+    # ow, oh = img.size
+    # mult = 8
+    # if ow < oh:
+    #     if ow == min_length and oh % mult == 0:
+    #         return img, (ow, oh)
+    #     w = min_length
+    #     h = int(min_length * oh / ow)
+    # else:
+    #     if oh == min_length and ow % mult == 0:
+    #         return img, (ow, oh)
+    #     h = min_length
+    #     w = int(min_length * ow / oh)
+    # return img.resize((w, h), Image.BICUBIC), (w, h)
+
+    return img.resize((min_length, min_length), Image.BICUBIC), (min_length, min_length)
 
 
 def resize_img(img, w, h):

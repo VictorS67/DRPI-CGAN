@@ -22,7 +22,7 @@ def binary_cross_entropy_loss(predictions: Tensor, targets: Tensor) -> Tensor:
     return -torch.mean(bceloss)
 
 
-class GeneratorLossFunction(nn.Module):
+class BCELossFunction(nn.Module):
 
     def __init__(self) -> None:
         super().__init__()
@@ -35,13 +35,39 @@ class GeneratorLossFunction(nn.Module):
         return loss
 
 
-class DiscriminatorLossFunction(nn.Module):
+class LSLossFunction(nn.Module):
 
     def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, classify_original: Tensor, classify_modified: Tensor) -> Tensor:
-        real_loss = binary_cross_entropy_loss(classify_original, True)
-        fake_loss = binary_cross_entropy_loss(classify_modified, False)
+    def forward(self, predictions: Tensor, targets: Tensor) -> Tensor:
 
-        return (real_loss + fake_loss) / 2
+        return torch.mean((predictions - targets) ** 2)
+
+
+class MixedGenLossFunction(nn.Module):
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.lambda_epe = 0.1
+        self.lambda_warp = 0.1
+        self.lambda_gen = 0.1
+        self.gen_loss = nn.BCELoss()
+
+    def forward(
+        self,
+        prediction: Tensor,
+        targets: Tensor,
+        predicted_warp: Tensor,
+        original: Tensor,
+        predicted_real: Tensor,
+        real: Tensor
+    ) -> Tensor:
+
+        loss_epe = torch.mean(torch.sqrt(torch.sum((prediction - targets) ** 2, dim=1)))
+        loss_warp = torch.mean(torch.abs(predicted_warp - original))
+        loss_gen = self.gen_loss(predicted_real, real)
+
+        # print(f"loss_epe: {loss_epe}, loss_warp: {loss_warp}, loss_gen: {loss_gen}")
+
+        return self.lambda_epe * loss_epe + self.lambda_warp * loss_warp + self.lambda_gen * loss_gen

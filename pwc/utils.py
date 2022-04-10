@@ -35,22 +35,22 @@ def preprocess(img):
     return h, w, preprocess_h, preprocess_w, nn.functional.interpolate(preprocess_img, size=(preprocess_h, preprocess_w), mode='bilinear', align_corners=False)
 
 
-def estimate(img1, img2, no_crop, box, w, h):
+def estimate(m_img1, o_img2, no_crop, box, w, h):
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    img1, img2 = load(img1, no_crop, box, w, h), load(img2, no_crop, box, w, h)
+    m_img1, o_img2 = load(m_img1, no_crop, box, w, h), load(o_img2, no_crop, box, w, h)
 
-    h, w, preprocess_h, preprocess_w, img1_tensor = preprocess(img1)
-    _, _, _, _, img2_tensor = preprocess(img2)
+    h, w, preprocess_h, preprocess_w, m_img1_tensor = preprocess(m_img1)
+    _, _, _, _, o_img2_tensor = preprocess(o_img2)
 
-    img1_tensor = img1_tensor.to(device)
-    img2_tensor = img2_tensor.to(device)
+    m_img1_tensor = m_img1_tensor.to(device)
+    o_img2_tensor = o_img2_tensor.to(device)
 
     # print(f"img1_tensor: {img1_tensor.shape}, img2_tensor: {img2_tensor.shape}")
 
     model = pwc_net('default').to(device)
     model.eval()
 
-    predict_flow = nn.functional.interpolate(model(img2_tensor, img1_tensor), size=(h, w), mode='bilinear', align_corners=False)
+    predict_flow = nn.functional.interpolate(model(o_img2_tensor, m_img1_tensor), size=(h, w), mode='bilinear', align_corners=False)
     predict_flow[:, 0, :, :] *= float(w) / float(preprocess_w)
     predict_flow[:, 1, :, :] *= float(h) / float(preprocess_h)
 

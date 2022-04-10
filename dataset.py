@@ -18,11 +18,12 @@ class GANDataset:
         dataconfig.no_crop = no_crop
         self.dataset = Dataset(dataconfig)
 
-    def __getitem__(self, index: int) -> Tuple[Tensor, ImageData, ImageData]:
+    def __getitem__(self, index: int) -> Tuple[Tensor, Tensor, ImageData, ImageData]:
         image_pair = self.dataset[index]
 
         return (
-            image_pair.modified.data, 
+            image_pair.modified.data,
+            image_pair.original.data,
             image_pair.modified,
             image_pair.original
         )
@@ -32,16 +33,17 @@ class GANDataset:
 
 
 def gan_collate(
-    batch: List[Tuple[Tensor, ImageData, ImageData]]
-) -> Tuple[Tensor, List[ImageData], List[ImageData]]:
+    batch: List[Tuple[Tensor, Tensor, ImageData, ImageData]]
+) -> Tuple[Tensor, Tensor, List[ImageData], List[ImageData]]:
     # print(f"batch: {batch}")
-    modified_tensors, modified_data, original_data = list(zip(*batch))
+    modified_tensors, original_tensors, modified_data, original_data = list(zip(*batch))
     # print(f"modified_tensors: {modified_tensors}")
     # print(f"modified_data: {modified_data}")
     # print(f"original_data: {original_data}")
 
     return (
-        torch.stack(modified_tensors), 
+        torch.stack(modified_tensors),
+        torch.stack(original_tensors),
         modified_data,
         original_data
     )

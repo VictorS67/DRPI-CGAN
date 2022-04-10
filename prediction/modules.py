@@ -14,7 +14,7 @@ class ConvGANDiscriminator(Discriminator):
     def __init__(self, config: DiscriminatorConfig) -> None:
         super().__init__(config)
 
-        assert(config.num_in_channels == 2)
+        assert(config.num_in_channels == 3)
         assert(config.num_filters == 64)
         assert(config.kernels == 4)
         assert(config.stride == 2)
@@ -44,7 +44,7 @@ class ConvGANDiscriminator(Discriminator):
         )
 
         self.conv5 = nn.Sequential(
-            nn.Conv2d(in_channels=config.num_filters * 8, out_channels=1, kernel_size=config.kernels, stride=1, padding=config.padding),
+            nn.Conv2d(in_channels=config.num_filters * 8, out_channels=1, kernel_size=config.kernels, stride=1, padding=0),
             nn.Sigmoid()
         )
 

@@ -21,11 +21,12 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 class GeneratorConfig:
 
     num_out_channels: int = 2
+    # model_path: str = "./drn/weights/local.pth"
 
 
 class DiscriminatorConfig:
 
-    num_in_channels: int = 2
+    num_in_channels: int = 3
     num_filters: int = 64
     kernels: int = 4
     stride: int = 2
@@ -39,7 +40,11 @@ class Generator(nn.Module):
 
         assert(config.num_out_channels == 2)
 
-        self.model = DRNSeg(config.num_out_channels, pretrained_drn=True)
+        self.model = DRNSeg(config.num_out_channels, pretrained_drn=False)
+
+        # if config.model_path is not None:
+        #     state_dict = torch.load(config.model_path, map_location=device)
+        #     self.model.load_state_dict(state_dict['model'])
 
     def forward(self, x):
         out = self.model(x)
@@ -62,9 +67,9 @@ class Generator(nn.Module):
         model.eval()
 
         for i in range(n):
-            modified_path = modified_data[i].name
+            modified_path = modified_data[i].name + "." + modified_data[i].suffix
             modified_box = modified_data[i].box
-            original_path = original_data[i].name
+            original_path = original_data[i].name + "." + original_data[i].suffix
 
             drn_image = pwc_utils.load(modified_path, no_crop, modified_box, fw, fh)
             pwc_image = pwc_utils.load(original_path, no_crop, modified_box, fw, fh)
@@ -91,7 +96,7 @@ class Discriminator(nn.Module):
     def __init__(self, config: DiscriminatorConfig) -> None:
         super().__init__()
 
-        assert(config.num_in_channels == 2)
+        assert(config.num_in_channels == 3)
         assert(config.num_filters == 64)
 
         self.model = nn.Sequential(

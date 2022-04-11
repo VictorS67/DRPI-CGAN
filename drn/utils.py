@@ -11,6 +11,7 @@ from tools.face_detection import detect_face
 def load(img_path, no_crop):
     if no_crop:
         img = Image.open(img_path).convert('RGB')
+        img = resize_img(img, 400, 400)[0]
         box = img.getbbox()
     else:
         img, box = detect_face(img_path)

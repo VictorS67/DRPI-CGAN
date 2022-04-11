@@ -3,6 +3,21 @@ import cv2
 
 import PIL.Image as Image
 import numpy as np
+# from torch import Tensor
+
+# from prediction.losses import LossData
+
+
+# def report_generator_loss(total_loss: Tensor, loss_data: LossData) -> str:
+#     report = f"G Loss - {total_loss.item():.4f} "
+#     if loss_data.loss_epe is not None or loss_data.loss_epe != 0.0:
+#         report += f"EPE Loss - {loss_data.loss_epe:.4f} "
+#     if loss_data.loss_warp is not None or loss_data.loss_warp != 0.0:
+#         report += f"Warp Loss - {loss_data.loss_warp:.4f} "
+#     if loss_data.loss_gan is not None or loss_data.loss_gan != 0.0:
+#         report += f"GAN Loss - {loss_data.loss_gan:.4f} "
+
+#     return report
 
 
 def visualize_warp(im, flow, output_path, alpha=1, interp=cv2.INTER_CUBIC):

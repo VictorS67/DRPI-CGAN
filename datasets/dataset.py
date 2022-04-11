@@ -146,7 +146,7 @@ class Dataset(torch.utils.data.Dataset):
             if image_name not in imgs:
                 imgs[image_name] = {}
             imgs[image_name][ImageType.MODIFIED] = img_data
-        
+
         for image_path, img_data in self.PWCLoader.imgs.items():
             image_name = img_data.name.split('/')[-1]
             if image_name not in imgs:

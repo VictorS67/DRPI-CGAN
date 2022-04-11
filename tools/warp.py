@@ -22,4 +22,10 @@ def warp(image, flow):
 
     warpped = nn.functional.grid_sample(image, vgrid.permute(0, 2, 3, 1))
 
-    return warpped
+    mask = Variable(torch.ones(image.shape)).to(device)
+    mask = nn.functional.grid_sample(mask, vgrid.permute(0, 2, 3, 1))
+
+    mask[mask < 0.9999] = 0
+    mask[mask > 0] = 1
+
+    return warpped * mask

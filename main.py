@@ -24,6 +24,7 @@ from tools.warp import warp
 from prediction.model import GeneratorConfig, DiscriminatorConfig, Generator, Discriminator
 from prediction.modules import ConvGANDiscriminator
 from prediction.losses import BCELossFunction, LSLossFunction, MixedGenLossFunction, LossConfig
+from prediction.metrics import EvaluationMetric
 from dataset import GANDataset, gan_collate
 
 
@@ -363,53 +364,156 @@ def train(
         losses.tofile(f"{outputpath}/losses_{epoch:03d}.csv", sep=',')
 
 
+def evaluate(
+    basepath: str,
+    outputpath: str,
+    no_crop: bool = False,
+    num_workers: int = 8,
+    checkpoint: Optional[str] = None
+) -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")   
+    os.makedirs(outputpath, exist_ok=True)
+
+    gen_config = GeneratorConfig()
+
+    generator = Generator(gen_config).to(device)
+    if checkpoint:
+        generator.load_state_dict(torch.load(checkpoint, map_location="cpu"))
+
+    gan_dataset = GANDataset(basepath, no_crop)
+    dataloader = torch.utils.data.DataLoader(
+        gan_dataset,
+        num_workers=num_workers,
+        collate_fn=gan_collate,
+    )
+
+    metric = EvaluationMetric()
+
+    for idx, (modified, original, modified_data, original_data) in tqdm(enumerate(dataloader)):
+        generator.eval()
+
+        with torch.no_grad():
+            original = original.to(device)
+
+            # Get noise from modified image
+            noise = modified.to(device)
+
+            # Generate fake flow from the noise
+            predicted_flow = generator(noise)  # [batch_size x D x H x W]
+
+            # Form the GT flow by PWC-Net
+            gt_flow, modified_nps = generator.inference(predicted_flow, modified_data, original_data, no_crop)
+            gt_flow = gt_flow.to(device) # [batch_size x D x H x W]
+
+            metric(predicted_flow[0], gt_flow[0], noise[0], original[0])
+
+            predicted_flow = np.transpose(predicted_flow.detach().cpu().numpy(), (0, 2, 3, 1))
+            gt_flow = np.transpose(gt_flow.detach().cpu().numpy(), (0, 2, 3, 1))
+
+            flow_output_path = f"{outputpath}/{idx}_flow.png"
+            visualize_flow_heatmap_batched(predicted_flow, flow_output_path, max_flow_mag=7.0)
+
+            merge_output_path = f"{outputpath}/{idx}_merge.png"
+            visualize_merge_heatmap_batched(modified_nps, predicted_flow, merge_output_path, max_flow_mag=7.0)
+
+            flow_output_path = f"{outputpath}/{idx}_flow_gt.png"
+            visualize_flow_heatmap_batched(gt_flow, flow_output_path)
+
+            merge_output_path = f"{outputpath}/{idx}_merge_gt.png"
+            visualize_merge_heatmap_batched(modified_nps, gt_flow, merge_output_path)
+
+            wrap_output_path = f"{outputpath}/{idx}_wrap.png"
+            visualize_warp_batched(modified_nps, predicted_flow, wrap_output_path)
+
+    avg_epe, delta_psnr, avg_iou = metric.inference()
+    print(
+        f"There are {len(dataloader)} images in validation set: " +
+        f"EPE: {avg_epe:.4f} " +
+        f"PSNR increases: {delta_psnr:.4f} " +
+        f"IOU: {avg_iou:.4f} "
+    )
+
+    np.array(metric.evaldata.epes).tofile(f"{outputpath}/result_epe.csv", sep=',')
+    np.array(metric.evaldata.ious).tofile(f"{outputpath}/result_iou.csv", sep=',')
+    np.array(metric.evaldata.before_psnrs).tofile(f"{outputpath}/result_psnr_before.csv", sep=',')
+    np.array(metric.evaldata.after_psnrs).tofile(f"{outputpath}/result_psnr_after.csv", sep=',')
+
+
+def pretrain(
+    basepath: str,
+    outputpath: str,
+    no_crop: bool = False,
+    num_workers: int = 8,
+    checkpoint: str = "./drn/weights/local.pth"
+) -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")   
+    os.makedirs(outputpath, exist_ok=True)
+
+    gen_config = GeneratorConfig()
+    gen_config.model_path = checkpoint
+
+    generator = Generator(gen_config).to(device)
+
+    gan_dataset = GANDataset(basepath, no_crop)
+    dataloader = torch.utils.data.DataLoader(
+        gan_dataset,
+        num_workers=num_workers,
+        collate_fn=gan_collate,
+    )
+
+    metric = EvaluationMetric()
+
+    for idx, (modified, original, modified_data, original_data) in tqdm(enumerate(dataloader)):
+        generator.eval()
+
+        with torch.no_grad():
+            original = original.to(device)
+
+            # Get noise from modified image
+            noise = modified.to(device)
+
+            # Generate fake flow from the noise
+            predicted_flow = generator(noise)  # [batch_size x D x H x W]
+
+            # Form the GT flow by PWC-Net
+            gt_flow, modified_nps = generator.inference(predicted_flow, modified_data, original_data, no_crop)
+            gt_flow = gt_flow.to(device) # [batch_size x D x H x W]
+
+            metric(predicted_flow[0], gt_flow[0], noise[0], original[0])
+
+            predicted_flow = np.transpose(predicted_flow.detach().cpu().numpy(), (0, 2, 3, 1))
+            gt_flow = np.transpose(gt_flow.detach().cpu().numpy(), (0, 2, 3, 1))
+
+            flow_output_path = f"{outputpath}/{idx}_flow.png"
+            visualize_flow_heatmap_batched(predicted_flow, flow_output_path, max_flow_mag=7.0)
+
+            merge_output_path = f"{outputpath}/{idx}_merge.png"
+            visualize_merge_heatmap_batched(modified_nps, predicted_flow, merge_output_path, max_flow_mag=7.0)
+
+            flow_output_path = f"{outputpath}/{idx}_flow_gt.png"
+            visualize_flow_heatmap_batched(gt_flow, flow_output_path)
+
+            merge_output_path = f"{outputpath}/{idx}_merge_gt.png"
+            visualize_merge_heatmap_batched(modified_nps, gt_flow, merge_output_path)
+
+            wrap_output_path = f"{outputpath}/{idx}_wrap.png"
+            visualize_warp_batched(modified_nps, predicted_flow, wrap_output_path)
+
+    avg_epe, delta_psnr, avg_iou = metric.inference()
+    print(
+        f"There are {len(dataloader)} images in validation set: " +
+        f"EPE: {avg_epe:.4f} " +
+        f"PSNR increases: {delta_psnr:.4f} " +
+        f"IOU: {avg_iou:.4f} "
+    )
+
+    np.array(metric.evaldata.epes).tofile(f"{outputpath}/result_epe.csv", sep=',')
+    np.array(metric.evaldata.ious).tofile(f"{outputpath}/result_iou.csv", sep=',')
+    np.array(metric.evaldata.before_psnrs).tofile(f"{outputpath}/result_psnr_before.csv", sep=',')
+    np.array(metric.evaldata.after_psnrs).tofile(f"{outputpath}/result_psnr_after.csv", sep=',')
+
+
 if __name__ == "__main__":
     import fire
 
     fire.Fire()
-
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument("--modify", required=True, help="the input of modified image")
-    # parser.add_argument("--origin", required=True, help="the input of original image")
-    # parser.add_argument("--model", required=True, help="the path to the drn model")
-    # parser.add_argument("--no_crop", action="store_true",
-    #     help="do not use a face detector, instead run on the full input image")
-    # parser.add_argument("--output_dir", required=True, 
-    #     help="the output directory of visualization")
-    # args = parser.parse_args()
-
-    # # DRN testing
-    # predicted_flow = predict_flow(args.modify, args.no_crop, model_path=args.model).detach().cpu().numpy()
-    # predicted_flow = np.transpose(predicted_flow, (1, 2, 0))
-    # h, w, d = predicted_flow.shape
-
-    # if args.no_crop:
-    #     img = Image.open(args.modify).convert('RGB')
-    # else:
-    #     img, box = detect_face(args.modify)
-    # modified = resize_img(img, w, h)[0]
-    # modified_np = np.asarray(modified)
-    # visualize_flow_heatmap(predicted_flow, os.path.join(args.output_dir, 'drn_flow_heatmap.jpg'))
-    # visualize_merge_heatmap(modified_np, predicted_flow, os.path.join(args.output_dir, 'drn_merge_heatmap.jpg'))
-    # visualize_warp(modified_np, predicted_flow, os.path.join(args.output_dir, 'drn_wrapped.jpg'))
-
-    # # PWC testing
-    # flow = estimate(args.modify, args.origin, args.no_crop, box, w, h).detach()
-    # flow = flow.cpu().numpy()
-    # flow = np.transpose(flow, (1, 2, 0))
-    # fh, fw, fd = flow.shape
-
-    # assert(h == fh)
-    # assert(w == fw)
-    # print(f"flow: h = {fh}, w = {fw}, d = {d}, fd = {fd}")
-
-    # visualize_flow_heatmap(flow, os.path.join(args.output_dir, 'pwc_flow_heatmap.jpg'), 7.0)
-    # visualize_merge_heatmap(modified_np, flow, os.path.join(args.output_dir, 'pwc_merge_heatmap.jpg'), 7.0)
-    # visualize_warp(modified_np, flow, os.path.join(args.output_dir, 'pwc_wrapped.jpg'))
-
-    # o_img = Image.open(args.origin).convert('RGB')
-    # if not args.no_crop:
-    #     o_img, _ = crop_img(o_img, box)
-    # o_img = resize_img(o_img, w, h)[0]
-    # o_img.save(os.path.join(args.output_dir, 'reshaped_original.jpg'), quality=90)
-    # modified.save(os.path.join(args.output_dir, 'reshaped_modified.jpg'), quality=90)

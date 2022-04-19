@@ -21,7 +21,7 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 class GeneratorConfig:
 
     num_out_channels: int = 2
-    # model_path: str = "./drn/weights/local.pth"
+    model_path: str = None
 
 
 class DiscriminatorConfig:
@@ -42,9 +42,9 @@ class Generator(nn.Module):
 
         self.model = DRNSeg(config.num_out_channels, pretrained_drn=False)
 
-        # if config.model_path is not None:
-        #     state_dict = torch.load(config.model_path, map_location=device)
-        #     self.model.load_state_dict(state_dict['model'])
+        if config.model_path is not None:
+            state_dict = torch.load(config.model_path, map_location=device)
+            self.model.load_state_dict(state_dict['model'])
 
     def forward(self, x):
         out = self.model(x)

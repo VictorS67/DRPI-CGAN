@@ -42,8 +42,8 @@ def gan_collate(
     # print(f"original_data: {original_data}")
 
     return (
-        torch.stack(modified_tensors),
-        torch.stack(original_tensors),
+        torch.stack(modified_tensors), # [batch_size x 3 x H x W]
+        torch.stack(original_tensors), # [batch_size x 3 x H x W]
         modified_data,
         original_data
     )

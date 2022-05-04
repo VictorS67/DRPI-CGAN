@@ -5,6 +5,8 @@
 
 This code provides the DRPI-CGAN model for solving problems of facial image manipulation detection and recovery.
 
+![Semantic Diagram](https://drive.google.com/file/d/1WR_6rYMQx3ZYYdJvPk7yykPUMdthrI82/view?usp=sharing)
+
 ## Setup
 
 ### Install packages
